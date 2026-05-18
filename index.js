@@ -90,6 +90,9 @@
             document.getElementById('successPanel').classList.add('active');
             document.getElementById('progressFill').style.width = '100%';
             document.getElementById('bookRef').textContent = 'Booking ref: ' + data.ref;
+            if (data.warning) {
+                toast(data.warning);
+            }
         } else {
             toast(data.message || 'Error submitting booking.');
             btn.textContent = '🚕 Confirm Booking';
@@ -115,8 +118,10 @@
     document.getElementById('charCount').textContent = '320 characters left';
     document.getElementById('bookBtn').textContent = '🚕 Confirm Booking';
     document.getElementById('bookBtn').disabled = false;
-    step = 0;
-    goStep(1);
+    step = 1;
+    document.getElementById('sp1').classList.add('active');
+    document.getElementById('progressFill').style.width = '33%';
+    window.scrollTo({ top: document.getElementById('booking').offsetTop - 80, behavior: 'smooth' });
   }
 
   /* ── FILL ROUTE ── */

@@ -90,12 +90,16 @@ Thank you for choosing North Sydney Cabs!
 
         // Try to send the emails if credentials are set
         if (process.env.SMTP_USER && process.env.SMTP_USER !== 'your_email@gmail.com') {
-            // Send to Driver
+            // Send to Driver first (Guaranteed to arrive even if passenger email is fake)
             await transporter.sendMail(driverMailOptions);
             
             // Send to Passenger (if they provided an email)
             if (pEmail) {
-                await transporter.sendMail(passengerMailOptions);
+                try {
+                    await transporter.sendMail(passengerMailOptions);
+                } catch (passengerErr) {
+                    console.error('Driver email sent, but failed to send to passenger (likely fake email):', passengerErr.message);
+                }
             }
         } else {
             console.log('Skipping email send because SMTP credentials are not configured.');
@@ -105,7 +109,7 @@ Thank you for choosing North Sydney Cabs!
     } catch (error) {
         console.error('Error sending email:', error);
         // Even if email fails, we return success to the frontend so the user sees the success screen.
-        res.status(200).json({ success: true, ref: bookingRef, warning: 'Email could not be sent. Check credentials.' });
+        res.status(200).json({ success: true, ref: bookingRef, warning: 'Failed to send email: ' + error.message });
     }
 });
 
