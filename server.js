@@ -16,59 +16,84 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-// Serve static files (HTML, CSS, JS) from the current directory
+// Serve static frontend files
 app.use(express.static(__dirname));
 
-// Email Transporter Configuration
+/* =========================
+   EMAIL TRANSPORTER
+========================= */
 const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: process.env.SMTP_PORT,
-    secure: process.env.SMTP_PORT === '465', // true for 465, false for other ports
+    service: 'gmail',
     auth: {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS
     },
     tls: {
-        rejectUnauthorized: false // Fixes the self-signed certificate error on Windows
-    },
-    connectionTimeout: 10000, // 10 seconds max wait
-    greetingTimeout: 10000,
-    socketTimeout: 10000
+        rejectUnauthorized: false
+    }
 });
 
+// Verify SMTP connection
+transporter.verify((error, success) => {
+    if (error) {
+        console.log('SMTP ERROR:', error);
+    } else {
+        console.log('SMTP SERVER READY');
+    }
+});
+
+/* =========================
+   BOOKING API
+========================= */
 app.post('/api/book', async (req, res) => {
-    // Generate reference outside the try block so it can be accessed in the catch block if needed
     const bookingRef = '#LC-' + Math.floor(1000 + Math.random() * 9000);
 
     try {
-        const { pickup, dest, when, scheduledTime, vehicle, pName, pPhone, pEmail, notes } = req.body;
+        const {
+            pickup,
+            dest,
+            when,
+            scheduledTime,
+            vehicle,
+            pName,
+            pPhone,
+            pEmail,
+            notes
+        } = req.body;
 
-        // 1. Email for the Driver
+        // DRIVER EMAIL
         const driverMailOptions = {
             from: process.env.SMTP_USER,
-            to: process.env.SMTP_USER, // Always send to the driver
+            to: process.env.SMTP_USER,
             subject: `New Taxi Booking - ${bookingRef} - ${pName}`,
             text: `
 New Booking Received!
---------------------
+
 Reference: ${bookingRef}
+
+Passenger Details
+-----------------
 Name: ${pName}
 Phone: ${pPhone}
 Email: ${pEmail || 'Not provided'}
 
-Trip Details:
--------------
+Trip Details
+------------
 Pickup: ${pickup}
 Destination: ${dest || 'Not provided'}
-When: ${when === 'now' ? 'ASAP' : 'Scheduled for ' + scheduledTime}
-Vehicle Type: ${vehicle}
+When: ${when === 'now'
+    ? 'ASAP'
+    : 'Scheduled for ' + scheduledTime}
 
-Notes from passenger:
+Vehicle: ${vehicle}
+
+Notes
+-----
 ${notes || 'None'}
 `
         };
 
-        // 2. Email for the Passenger
+        // PASSENGER EMAIL
         const passengerMailOptions = {
             from: process.env.SMTP_USER,
             to: pEmail,
@@ -76,43 +101,67 @@ ${notes || 'None'}
             text: `
 Hi ${pName},
 
-Your taxi booking is confirmed! 
+Your taxi booking has been confirmed.
 
 Booking Reference: ${bookingRef}
-Pickup Location: ${pickup}
-When: ${when === 'now' ? 'ASAP' : 'Scheduled for ' + scheduledTime}
 
-Once your booking is processed, the driver will call you on ${pPhone} to confirm the details.
+Pickup Location:
+${pickup}
 
-Thank you for choosing North Sydney Cabs!
+Time:
+${when === 'now'
+    ? 'ASAP'
+    : scheduledTime}
+
+A driver will contact you shortly on:
+${pPhone}
+
+Thank you for choosing North Sydney Cabs.
 `
         };
 
-        // Try to send the emails if credentials are set
-        if (process.env.SMTP_USER && process.env.SMTP_USER !== 'your_email@gmail.com') {
-            // Send to Driver first (Guaranteed to arrive even if passenger email is fake)
-            await transporter.sendMail(driverMailOptions);
-            
-            // Send to Passenger (if they provided an email)
-            if (pEmail) {
-                try {
-                    await transporter.sendMail(passengerMailOptions);
-                } catch (passengerErr) {
-                    console.error('Driver email sent, but failed to send to passenger (likely fake email):', passengerErr.message);
-                }
+        // SEND DRIVER EMAIL
+        await transporter.sendMail(driverMailOptions);
+        console.log('Driver email sent');
+
+        // SEND PASSENGER EMAIL IF PROVIDED
+        if (pEmail && pEmail.trim() !== '') {
+            try {
+                await transporter.sendMail(passengerMailOptions);
+                console.log('Passenger email sent');
+            } catch (passengerErr) {
+                console.log(
+                    'Passenger email failed:',
+                    passengerErr.message
+                );
             }
-        } else {
-            console.log('Skipping email send because SMTP credentials are not configured.');
         }
-        
-        res.status(200).json({ success: true, ref: bookingRef });
+
+        return res.status(200).json({
+            success: true,
+            ref: bookingRef
+        });
+
     } catch (error) {
-        console.error('Error sending email:', error);
-        // Even if email fails, we return success to the frontend so the user sees the success screen.
-        res.status(200).json({ success: true, ref: bookingRef, warning: 'Failed to send email: ' + error.message });
+        console.error('EMAIL ERROR:', error);
+
+        return res.status(500).json({
+            success: false,
+            error: error.message
+        });
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
+/* =========================
+   FRONTEND ROUTE
+========================= */
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+/* =========================
+   START SERVER
+========================= */
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on port ${PORT}`);
 });
