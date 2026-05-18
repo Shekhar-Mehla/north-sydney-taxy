@@ -2,7 +2,6 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -20,27 +19,39 @@ app.use(express.json());
 app.use(express.static(__dirname));
 
 /* =========================
-   EMAIL TRANSPORTER
+   BREVO API HELPER
 ========================= */
-const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS
-    },
-    tls: {
-        rejectUnauthorized: false
-    }
-});
+async function sendBrevoEmail(toEmail, subject, textContent) {
+    const apiKey = process.env.BREVO_API_KEY;
+    const senderEmail = process.env.SMTP_USER || 'smehla147@gmail.com';
 
-// Verify SMTP connection
-transporter.verify((error, success) => {
-    if (error) {
-        console.log('SMTP ERROR:', error);
-    } else {
-        console.log('SMTP SERVER READY');
+    if (!apiKey) {
+        throw new Error('BREVO_API_KEY is not configured in environment variables.');
     }
-});
+
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+            'accept': 'application/json',
+            'api-key': apiKey,
+            'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+            sender: { email: senderEmail, name: 'North Sydney Cabs' },
+            to: [{ email: toEmail }],
+            subject: subject,
+            textContent: textContent
+        })
+    });
+
+    const data = await response.json();
+    
+    if (!response.ok) {
+        throw new Error(`Brevo API Error: ${data.message || JSON.stringify(data)}`);
+    }
+    
+    return data;
+}
 
 /* =========================
    BOOKING API
@@ -50,23 +61,11 @@ app.post('/api/book', async (req, res) => {
 
     try {
         const {
-            pickup,
-            dest,
-            when,
-            scheduledTime,
-            vehicle,
-            pName,
-            pPhone,
-            pEmail,
-            notes
+            pickup, dest, when, scheduledTime, vehicle, pName, pPhone, pEmail, notes
         } = req.body;
 
-        // DRIVER EMAIL
-        const driverMailOptions = {
-            from: process.env.SMTP_USER,
-            to: process.env.SMTP_USER,
-            subject: `New Taxi Booking - ${bookingRef} - ${pName}`,
-            text: `
+        const driverSubject = `New Taxi Booking - ${bookingRef} - ${pName}`;
+        const driverText = `
 New Booking Received!
 
 Reference: ${bookingRef}
@@ -81,24 +80,17 @@ Trip Details
 ------------
 Pickup: ${pickup}
 Destination: ${dest || 'Not provided'}
-When: ${when === 'now'
-    ? 'ASAP'
-    : 'Scheduled for ' + scheduledTime}
+When: ${when === 'now' ? 'ASAP' : 'Scheduled for ' + scheduledTime}
 
 Vehicle: ${vehicle}
 
 Notes
 -----
 ${notes || 'None'}
-`
-        };
+`;
 
-        // PASSENGER EMAIL
-        const passengerMailOptions = {
-            from: process.env.SMTP_USER,
-            to: pEmail,
-            subject: `Booking Confirmation - ${bookingRef}`,
-            text: `
+        const passengerSubject = `Booking Confirmation - ${bookingRef}`;
+        const passengerText = `
 Hi ${pName},
 
 Your taxi booking has been confirmed.
@@ -109,31 +101,25 @@ Pickup Location:
 ${pickup}
 
 Time:
-${when === 'now'
-    ? 'ASAP'
-    : scheduledTime}
+${when === 'now' ? 'ASAP' : scheduledTime}
 
 A driver will contact you shortly on:
 ${pPhone}
 
 Thank you for choosing North Sydney Cabs.
-`
-        };
+`;
 
         // SEND DRIVER EMAIL
-        await transporter.sendMail(driverMailOptions);
-        console.log('Driver email sent');
+        await sendBrevoEmail(process.env.SMTP_USER || 'smehla147@gmail.com', driverSubject, driverText);
+        console.log('Driver email sent successfully via Brevo API');
 
         // SEND PASSENGER EMAIL IF PROVIDED
         if (pEmail && pEmail.trim() !== '') {
             try {
-                await transporter.sendMail(passengerMailOptions);
-                console.log('Passenger email sent');
+                await sendBrevoEmail(pEmail.trim(), passengerSubject, passengerText);
+                console.log('Passenger email sent successfully via Brevo API');
             } catch (passengerErr) {
-                console.log(
-                    'Passenger email failed:',
-                    passengerErr.message
-                );
+                console.log('Passenger email failed (likely fake or bounced):', passengerErr.message);
             }
         }
 
@@ -143,8 +129,8 @@ Thank you for choosing North Sydney Cabs.
         });
 
     } catch (error) {
-        console.error('EMAIL ERROR:', error);
-
+        console.error('EMAIL ERROR:', error.message);
+        
         return res.status(500).json({
             success: false,
             error: error.message

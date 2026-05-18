@@ -1,6 +1,5 @@
   /* ── NAV ── */
-  function openMenu() { document.getElementById('mobileMenu').classList.add('open'); }
-  function closeMenu() { document.getElementById('mobileMenu').classList.remove('open'); }
+
 
   /* ── WHEN ── */
   function setWhen(m) {
@@ -108,7 +107,9 @@
 
   /* ── RESET ── */
   function resetBook() {
+    ['sp1','sp2','sp3'].forEach(id => document.getElementById(id).classList.remove('active'));
     document.getElementById('successPanel').classList.remove('active');
+    
     document.getElementById('pickup').value = '';
     document.getElementById('dest').value = '';
     document.getElementById('pName').value = '';
@@ -116,8 +117,13 @@
     document.getElementById('pEmail').value = '';
     document.getElementById('notes').value = '';
     document.getElementById('charCount').textContent = '320 characters left';
-    document.getElementById('bookBtn').textContent = '🚕 Confirm Booking';
-    document.getElementById('bookBtn').disabled = false;
+    
+    const bookBtn = document.getElementById('bookBtn');
+    if (bookBtn) {
+      bookBtn.textContent = '🚕 Confirm Booking';
+      bookBtn.disabled = false;
+    }
+    
     step = 1;
     document.getElementById('sp1').classList.add('active');
     document.getElementById('progressFill').style.width = '33%';
