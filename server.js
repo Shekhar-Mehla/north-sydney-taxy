@@ -30,7 +30,10 @@ const transporter = nodemailer.createTransport({
     },
     tls: {
         rejectUnauthorized: false // Fixes the self-signed certificate error on Windows
-    }
+    },
+    connectionTimeout: 10000, // 10 seconds max wait
+    greetingTimeout: 10000,
+    socketTimeout: 10000
 });
 
 app.post('/api/book', async (req, res) => {
